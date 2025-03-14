@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Areas Served Cities Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        /* General Styles */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+
+        h1, h2 {
+            text-align: center;
+        }
+
+        h1 {
+            color: #1b5fc8;
+            font-size: 2.5em;
+            margin-bottom: 5px;
+        }
+
+        h2 {
+            color: #555;
+            font-size: 1.2em;
+            margin-bottom: 30px;
+        }
+
+        /* Input and Button Styles */
+        .form-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin: 20px auto;
+            max-width: 1200px;
+        }
+
+        label {
+            font-weight: bold;
+            flex: 0 0 100px;
+            text-align: right;
+        }
+
+        input, button {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 1em;
+            box-sizing: border-box;
+        }
+
+        input {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        button {
+            background-color: #6dc069;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1em;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+            flex: 0 0 auto;
+        }
+
+        button:hover {
+            background-color: #5aa456;
+        }
+
+
+        /* Results Table */
+        #results {
+            margin: 30px auto;
+            width: 80%;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            background-color: white;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #1b5fc8;
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        tr:hover {
+            background-color: #eaf3ff;
+        }
+
+        /* All Cities List */
+        #allCitiesList {
+            margin-top: 20px;
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #1b5fc8;
+            text-align: center;
+        }
+
+        /* File Upload Status */
+        #fileStatus {
+            text-align: center;
+            font-weight: bold;
+            color: #1b5fc8;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+<h1>Areas Served Cities Generator</h1>
+<h2>All cities within 30 miles radius and 30,000 people population</h2>
+
+<div class="form-container">
+    <label for="fileInput">Upload Population File:</label>
+    <input type="file" id="fileInput" accept=".xlsx" />
+    <label for="city">Enter City:</label>
+    <input type="text" id="city" placeholder="City" required>
+    <label for="state">Enter State:</label>
+    <input type="text" id="state" placeholder="State" required>
+    <button onclick="fetchCities()">Find Cities</button>
+</div>
+
+<p id="fileStatus">No file uploaded yet.</p>
+<div id="results"></div>
+<div id="allCitiesList"></div>
+
+<script>
+    let populationDatabase = {}; // Store population data
+
+    const stateMap = {
+        "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
+        "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia",
+        "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa",
+        "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+        "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri",
+        "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey",
+        "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio",
+        "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+        "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont",
+        "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming", "DC": "District of Columbia"
+    };
+
+    // Load the Excel file
+    document.getElementById("fileInput").addEventListener("change", handleFile);
+    function handleFile(event) {
+        const file = event.target.files[0];
+        const reader = new FileReader();
+
+        reader.onload = function (e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: "array" });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+            for (let i = 4; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                if (row[0] && row[5]) {
+                    const key = row[0].trim().toLowerCase();
+                    const population = parseInt(row[5]);
+                    populationDatabase[key] = population;
+                }
+            }
+            document.getElementById("fileStatus").textContent = "Population data loaded successfully!";
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // Fetch Cities
+    async function fetchCities() {
+        const city = document.getElementById("city").value.trim();
+        const stateAbbrInput = document.getElementById("state").value.trim().toUpperCase();
+
+        if (!city || !stateAbbrInput) {
+            alert("Please enter both a valid city and state abbreviation.");
+            return;
+        }
+
+        const resultsDiv = document.getElementById("results");
+        const allCitiesDiv = document.getElementById("allCitiesList");
+        resultsDiv.innerHTML = '<p class="loading">Resolving location...</p>';
+        allCitiesDiv.innerHTML = "";
+
+        try {
+            // Fetch geolocation data for the input city
+            const geoResponse = await fetch(
+                `https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(city)}&state=${encodeURIComponent(stateAbbrInput)}&country=US&format=json`
+            );
+            const geoData = await geoResponse.json();
+
+            if (!geoData.length) {
+                resultsDiv.innerHTML = "<p>Could not resolve location. Check your input.</p>";
+                return;
+            }
+
+
+
+
+
+
+            const location = geoData[0];
+            const coordinates = { latitude: location.lat, longitude: location.lon };
+            const stateNameFromAPI = location.display_name?.split(",")[1]?.trim();
+            let stateAbbrFromAPI = Object.keys(stateMap).find(
+                key => stateMap[key].toLowerCase() === stateNameFromAPI?.toLowerCase()
+            );
+
+            // Log for debugging
+            console.log("API Display Name:", location.display_name);
+            console.log("Extracted State Name:", stateNameFromAPI);
+            console.log("Matched State Abbreviation:", stateAbbrFromAPI);
+
+            // Fallback to user input if state cannot be determined
+            if (!stateAbbrFromAPI) {
+                console.warn("Could not determine state from API data. Falling back to user input.");
+                stateAbbrFromAPI = stateAbbrInput; // This is where the reassignment happens
+            }
+
+
+            console.log("Resolved Location:", { city, stateNameFromAPI, stateAbbrFromAPI, coordinates });
+
+            // Fetch nearby cities based on geolocation
+            const geoNamesResponse = await fetch(
+                `http://api.geonames.org/citiesJSON?north=${parseFloat(coordinates.latitude) + 0.5}&south=${parseFloat(coordinates.latitude) - 0.5}&east=${parseFloat(coordinates.longitude) + 0.5}&west=${parseFloat(coordinates.longitude) - 0.5}&maxRows=100&username=b0rahae`
+            );
+
+            const data = await geoNamesResponse.json();
+            console.log("Nearby Cities from GeoNames API:", data.geonames);
+
+            // Use the state obtained from the API for filtering
+            displayResults(data.geonames, coordinates, stateAbbrFromAPI, stateNameFromAPI);
+        } catch (error) {
+            resultsDiv.innerHTML = `<p>Error: ${error.message}. Please try again later.</p>`;
+        }
+    }
+
+    document.querySelectorAll("#city, #state").forEach(input => {
+        input.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+                event.preventDefault(); // Prevent form submission
+                document.querySelector("button").click(); // Simulate button click
+            }
+        });
+    });
+
+    const neighboringStates = {
+        "AL": ["FL", "GA", "MS", "TN"],
+        "AK": [], // Alaska has no neighboring states
+        "AZ": ["CA", "CO", "NV", "NM", "UT"],
+        "AR": ["LA", "MS", "MO", "OK", "TN", "TX"],
+        "CA": ["AZ", "NV", "OR"],
+        "CO": ["AZ", "KS", "NE", "NM", "OK", "UT", "WY"],
+        "CT": ["MA", "NY", "RI"],
+        "DE": ["MD", "NJ", "PA"],
+        "DC": ["MD", "VA"],
+        "FL": ["AL", "GA"],
+        "GA": ["AL", "FL", "NC", "SC", "TN"],
+        "HI": [], // Hawaii has no neighboring states
+        "ID": ["MT", "NV", "OR", "UT", "WA", "WY"],
+        "IL": ["IA", "IN", "KY", "MO", "WI"],
+        "IN": ["IL", "KY", "MI", "OH"],
+        "IA": ["IL", "MN", "MO", "NE", "SD", "WI"],
+        "KS": ["CO", "MO", "NE", "OK"],
+        "KY": ["IL", "IN", "MO", "OH", "TN", "VA", "WV"],
+        "LA": ["AR", "MS", "TX"],
+        "ME": ["NH"],
+        "MD": ["DC", "DE", "PA", "VA", "WV"],
+        "MA": ["CT", "NH", "NY", "RI", "VT"],
+        "MI": ["IN", "OH", "WI"],
+        "MN": ["IA", "ND", "SD", "WI"],
+        "MS": ["AL", "AR", "LA", "TN"],
+        "MO": ["AR", "IL", "IA", "KS", "KY", "NE", "OK", "TN"],
+        "MT": ["ID", "ND", "SD", "WY"],
+        "NE": ["CO", "IA", "KS", "MO", "SD", "WY"],
+        "NV": ["AZ", "CA", "ID", "OR", "UT"],
+        "NH": ["ME", "MA", "VT"],
+        "NJ": ["DE", "NY", "PA"],
+        "NM": ["AZ", "CO", "OK", "TX", "UT"],
+        "NY": ["CT", "MA", "NJ", "PA", "VT"],
+        "NC": ["GA", "SC", "TN", "VA"],
+        "ND": ["MN", "MT", "SD"],
+        "OH": ["IN", "KY", "MI", "PA", "WV"],
+        "OK": ["AR", "CO", "KS", "MO", "NM", "TX"],
+        "OR": ["CA", "ID", "NV", "WA"],
+        "PA": ["DE", "MD", "NJ", "NY", "OH", "WV"],
+        "RI": ["CT", "MA"],
+        "SC": ["GA", "NC"],
+        "SD": ["IA", "MN", "MT", "NE", "ND", "WY"],
+        "TN": ["AL", "AR", "GA", "KY", "MS", "MO", "NC", "VA"],
+        "TX": ["AR", "LA", "NM", "OK"],
+        "UT": ["AZ", "CO", "ID", "NV", "WY"],
+        "VT": ["MA", "NH", "NY"],
+        "VA": ["DC", "KY", "MD", "NC", "TN", "WV"],
+        "WA": ["ID", "OR"],
+        "WV": ["KY", "MD", "OH", "PA", "VA"],
+        "WI": ["IA", "IL", "MI", "MN"],
+        "WY": ["CO", "ID", "MT", "NE", "SD", "UT"]
+    };
+
+
+    function displayResults(cities, origin, apiStateAbbr, apiStateName) {
+        const resultsDiv = document.getElementById("results");
+        const allCitiesDiv = document.getElementById("allCitiesList");
+        resultsDiv.innerHTML = "";
+
+        const table = document.createElement("table");
+        table.innerHTML = `
+            <tr>
+                <th>City, State</th>
+                <th>Population</th>
+                <th>Distance (miles)</th>
+            </tr>
+        `;
+
+        const cityList = [];
+
+        // Get neighboring states of the input state
+        const validStates = [apiStateAbbr, ...(neighboringStates[apiStateAbbr] || [])];
+        console.log("Valid States for Comparison:", validStates);
+
+
+        cities.forEach(city => {
+            const distance = calculateDistance(origin.latitude, origin.longitude, city.lat, city.lng).toFixed(2);
+
+            // Debugging logs
+            console.log("Origin Coordinates:", origin.latitude, origin.longitude);
+            console.log(`Checking city ${city.name} with coords (${city.lat}, ${city.lng})`);
+            console.log(`Calculated Distance: ${distance} miles`);
+
+            if (distance > 30) {
+                console.log(`Skipping ${city.name} (${distance} miles) as it exceeds 30-mile radius.`);
+                return;
+        }
+
+
+            // Variable to store the state abbreviation matched in the population file
+            let matchedStateAbbr = "Unknown";
+
+            // Generate key variations for each valid state
+            let population = "Unknown";
+            for (const stateAbbr of validStates) {
+                const fullStateName = stateMap[stateAbbr];
+
+                const keyVariations = [
+                    `${city.name} city, ${fullStateName}`.toLowerCase(),
+                    `${city.name} town, ${fullStateName}`.toLowerCase(),
+                    `${city.name} village, ${fullStateName}`.toLowerCase(),
+                    `${city.name} borough, ${fullStateName}`.toLowerCase(),
+                    `${city.name} township, ${fullStateName}`.toLowerCase(),
+                ];
+
+                for (const key of keyVariations) {
+                    if (populationDatabase[key]) {
+                        population = populationDatabase[key];
+                        matchedStateAbbr = stateAbbr; // Capture the matched state abbreviation
+                        break;
+                    }
+                }
+
+                if (population !== "Unknown") break; // Stop checking if population is found
+            }
+
+            console.log(`City: ${city.name}, Matched Population: ${population}, Matched State Abbreviation: ${matchedStateAbbr}`);
+
+            if (population !== "Unknown" && population < 30000) {
+                cityList.push({ name: city.name, state: matchedStateAbbr, population, distance });
+            }
+        });
+
+        // Sort by population descending
+        cityList.sort((a, b) => b.population - a.population);
+
+        cityList.forEach(city => {
+            const row = document.createElement("tr");
+            row.innerHTML = `
+                <td>${city.name}, ${city.state}</td>
+                <td>${city.population}</td>
+                <td>${city.distance}</td>
+            `;
+            table.appendChild(row);
+        });
+
+        resultsDiv.appendChild(table);
+        allCitiesDiv.textContent = "All Cities: " + cityList.map(city => `${city.name}, ${city.state}`).join("; ") + ";";
+        console.log("Final Filtered Cities:", cityList);
+    }
+
+
+
+
+
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const toRad = value => (value * Math.PI) / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c * 0.621371; // Convert to miles
+    }
+</script>
+</body>
+</html>
